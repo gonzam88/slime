@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using MidiJack;
 
 public class SlimeCpu : MonoBehaviour
 {
@@ -189,6 +190,10 @@ public class SlimeCpu : MonoBehaviour
     // Update is called once per frame
     void Update () {
 
+       //Debug.Log(MidiMaster.GetKnob(0, 14));
+        decaySpeed = map(MidiMaster.GetKnob(2), 0.0f, 1.0f, 1.1f, 0.8f);
+        diffusionStrength = map(MidiMaster.GetKnob(1), 0.0f, 1.0f, 0.001f, 0.09f);
+       
         float[] mousePosition2D = { cursorPos.x, cursorPos.y };
 
         // Send datas to the compute shader
@@ -222,5 +227,10 @@ public class SlimeCpu : MonoBehaviour
 
         cursorPos.x = p.x;
         cursorPos.y = p.y;
+    }
+
+    float map(float s, float a1, float a2, float b1, float b2)
+    {
+        return b1 + (s-a1)*(b2-b1)/(a2-a1);
     }
 }
