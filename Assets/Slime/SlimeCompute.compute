@@ -1,0 +1,112 @@
+﻿
+
+ // Particle's data
+struct Particle
+{
+	float3 position;
+	float3 velocity;
+	float life;
+};
+
+
+// Particle's data, shared with the shader
+RWStructuredBuffer<Particle> particleBuffer;
+RWStructuredBuffer<float> trailBuffer;
+
+// Variables set from the CPU
+float deltaTime;
+float2 mousePosition;
+
+float diffusionStrength;
+float decaySpeed;
+
+// Output
+RWTexture2D<float4> Result;
+
+float nrand(float2 uv)
+{
+	return frac(sin(dot(uv, float2(12.9898, 78.233))) * 43758.5453);
+}
+
+uint rng_state;
+
+
+uint rand_xorshift()
+{
+	// Xorshift algorithm from George Marsaglia's paper
+	rng_state ^= (rng_state << 13);
+	rng_state ^= (rng_state >> 17);
+	rng_state ^= (rng_state << 5);
+	return rng_state;
+}
+
+float round(float a){
+	return floor(a + 0.5);
+}
+
+//MAP
+float map(float x, float in_min, float in_max, float out_min, float out_max)
+{
+    return round((x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min);
+}
+
+uint ColRow(uint col, uint row){
+	return  row * 1024 + col;
+}
+
+#pragma kernel CSParticle
+[numthreads(256, 1, 1)]
+void CSParticle(uint3 id : SV_DispatchThreadID)
+{
+	// subtract the life based on deltaTime
+	//particleBuffer[id.x].life -= deltaTime;
+
+	float3 delta = float3(mousePosition.xy, 3) - particleBuffer[id.x].position;
+	float3 dir = normalize(delta);
+
+
+	particleBuffer[id.x].position += particleBuffer[id.x].velocity;
+
+	uint escalaMapa = 500;
+	uint trailPositionX = round(particleBuffer[id.x].position.x * escalaMapa);
+	uint trailPositionY = round(particleBuffer[id.x].position.y * escalaMapa);
+	uint trailIndex = trailPositionY * 1024 + trailPositionX;
+	trailBuffer[trailIndex] = 1.0;
+
+}
+
+
+
+#pragma kernel TrailDecay
+[numthreads(32,32,1)]
+void TrailDecay (uint3 id : SV_DispatchThreadID)
+{
+	
+	uint index = id.y * 1024 + id.x;
+	float myVal = trailBuffer[index];
+	uint i = id.x;
+	uint j = id.y;
+	// DIFUSSION 
+	// float diffusionStrength = 0.02;
+
+	trailBuffer[ColRow(i-1, j-1)] += myVal * 0.3 * diffusionStrength;
+	trailBuffer[ColRow(i, j-1)]   += myVal * 0.3 * diffusionStrength;
+	trailBuffer[ColRow(i+1, j-1)] += myVal * 0.3 * diffusionStrength;
+
+	trailBuffer[ColRow(i-1, j)]   += myVal * 0.3 * diffusionStrength;
+	trailBuffer[ColRow(i, j)]     -= myVal * 0.9 * diffusionStrength;
+	trailBuffer[ColRow(i+1, j)]   += myVal * 0.3 * diffusionStrength;
+
+	trailBuffer[ColRow(i-1, j+1)] += myVal * 0.3 * diffusionStrength;
+	trailBuffer[ColRow(i, j+1)]   += myVal * 0.3 * diffusionStrength;
+	trailBuffer[ColRow(i+1, j+1)] += myVal * 0.3 * diffusionStrength;
+	
+	// float decaySpeed = 1.015;
+	trailBuffer[index] /= decaySpeed;
+
+	Result[id.xy] = float4(
+		trailBuffer[index], 
+		trailBuffer[index], 
+		trailBuffer[index], 1);
+	 
+}
