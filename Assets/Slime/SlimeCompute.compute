@@ -5,7 +5,9 @@ struct Particle
 {
 	float3 position;
 	float3 velocity;
-	float life;
+	float heading;
+	float speed;
+	//float life;
 };
 
 
@@ -17,8 +19,12 @@ RWStructuredBuffer<float> trailBuffer;
 float deltaTime;
 float2 mousePosition;
 
+float speedMultiplier = 1;
 float diffusionStrength;
 float decaySpeed;
+
+float sensorAngle = 0.349066;
+float sensorDistance = 0.01;
 
 // Output
 RWTexture2D<float4> Result;
@@ -54,25 +60,71 @@ uint ColRow(uint col, uint row){
 	return  row * 1024 + col;
 }
 
+uint ParticlePositionToTrailIndex(float x, float y, uint escalaMapa){
+	uint trailPositionX = round(x * escalaMapa);
+	uint trailPositionY = round(y * escalaMapa);
+	return trailPositionY * 1024 + trailPositionX;
+}
+
 #pragma kernel CSParticle
 [numthreads(256, 1, 1)]
 void CSParticle(uint3 id : SV_DispatchThreadID)
 {
-	// subtract the life based on deltaTime
-	//particleBuffer[id.x].life -= deltaTime;
+	// SENSE
+	// float sensorDis = 0.1;
+	
+	float maxSense = 0;
+    uint maxSenseDir = 0;
+	
+    //left
+    float radAngle = particleBuffer[id.x].heading - sensorAngle;
+    float sensorX = round(particleBuffer[id.x].position.x + (sensorDistance * cos(radAngle)));
+    float sensorY = round(particleBuffer[id.x].position.y + (sensorDistance * sin(radAngle)));
+    float sensorRead = trailBuffer[ColRow(sensorY, sensorX)];
+    if(sensorRead > maxSense){
+      maxSense = sensorRead;
+      maxSenseDir = -1;
+    }
+    // center
+    radAngle = particleBuffer[id.x].heading;
+    sensorX = round(particleBuffer[id.x].position.x + (sensorDistance * cos(radAngle)));
+    sensorY = round(particleBuffer[id.x].position.y + (sensorDistance * sin(radAngle)));
+    sensorRead = trailBuffer[ColRow(sensorY, sensorX)];
+    if(sensorRead >= maxSense){
+      maxSense = sensorRead;
+      maxSenseDir = 0;
+    }
+    // right
+    radAngle = particleBuffer[id.x].heading + sensorAngle;
+    sensorX = round(particleBuffer[id.x].position.x + (sensorDistance * cos(radAngle)));
+    sensorY = round(particleBuffer[id.x].position.y + (sensorDistance * sin(radAngle)));
+    sensorRead = trailBuffer[ColRow(sensorY, sensorX)];
+    if(sensorRead > maxSense){
+      maxSense = sensorRead;
+      maxSenseDir = 1;
+    }
 
-	float3 delta = float3(mousePosition.xy, 3) - particleBuffer[id.x].position;
-	float3 dir = normalize(delta);
+	// ROTATE
+	particleBuffer[id.x].heading += sensorAngle * maxSenseDir;
+	
+	// MOVE
+	//particleBuffer[id.x].position += particleBuffer[id.x].velocity;
+	float velX = sin(particleBuffer[id.x].heading) * particleBuffer[id.x].speed;
+	float velY = cos(particleBuffer[id.x].heading) * particleBuffer[id.x].speed;
 
-
-	particleBuffer[id.x].position += particleBuffer[id.x].velocity;
-
+	particleBuffer[id.x].position.x += velX * speedMultiplier * deltaTime;
+	particleBuffer[id.x].position.y += velY * speedMultiplier * deltaTime;
+	
+	// // DEPOSIT
 	uint escalaMapa = 500;
-	uint trailPositionX = round(particleBuffer[id.x].position.x * escalaMapa);
-	uint trailPositionY = round(particleBuffer[id.x].position.y * escalaMapa);
-	uint trailIndex = trailPositionY * 1024 + trailPositionX;
-	trailBuffer[trailIndex] = 1.0;
+	uint trailIndex = ParticlePositionToTrailIndex(particleBuffer[id.x].position.x,particleBuffer[id.x].position.y,escalaMapa);
 
+	// trailBuffer[trailIndex] = 1.0;
+	// if(heading > 340){
+		
+	trailBuffer[trailIndex] = 1.0;
+	// } 
+	
 }
 
 
@@ -101,6 +153,7 @@ void TrailDecay (uint3 id : SV_DispatchThreadID)
 	trailBuffer[ColRow(i, j+1)]   += myVal * 0.3 * diffusionStrength;
 	trailBuffer[ColRow(i+1, j+1)] += myVal * 0.3 * diffusionStrength;
 	
+	// DECAY
 	// float decaySpeed = 1.015;
 	trailBuffer[index] /= decaySpeed;
 

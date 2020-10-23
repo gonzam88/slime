@@ -13,7 +13,8 @@ public class SlimeCpu : MonoBehaviour
     {
         public Vector3 position;
         public Vector3 velocity;
-        public float life;
+        public float heading;
+        public float speed;
     }
 
     /// <summary>
@@ -21,13 +22,12 @@ public class SlimeCpu : MonoBehaviour
     /// since float = 4 bytes...
     /// 4 floats = 16 bytes
 	/// </summary>
-	//private const int SIZE_PARTICLE = 24;
-    private const int SIZE_PARTICLE = 28; // since property "life" is added...
+    private const int SIZE_PARTICLE = sizeof(float)*8;
 
     /// <summary>
     /// Number of Particle created in the system.
     /// </summary>
-    private int particleCount = 100;
+    private int particleCount = 10000;
 
     /// <summary>
     /// Material used to draw the Particle on screen.
@@ -82,7 +82,14 @@ public class SlimeCpu : MonoBehaviour
     [Header("Settings")]
     public float decaySpeed;
     public float diffusionStrength;
-	// Use this for initialization
+    public float speedMultiplier;
+    
+    public float sensorAngle;
+    public float sensorDistance;
+	
+    [Header("UI")]
+    public Text text;
+    // Use this for initialization
 	void Start () {
         InitTexture();
         InitCanvas();
@@ -120,25 +127,16 @@ public class SlimeCpu : MonoBehaviour
 
         for (int i = 0; i < particleCount; i++)
         {
-            float x = 1.0f;//Random.value * 0.5f - 1.0f;
-            float y = 1.0f;//Random.value * 0.5f - 1.0f;
-            float z = 0.0f;//Random.value * 0.5f - 1.0f;
-            Vector3 xyz = new Vector3(x, y, z);
-            // xyz.Normalize();
-            // xyz *= Random.value;
-            // xyz *= 0.5f;
-
-
-            particleArray[i].position.x = xyz.x;
-            particleArray[i].position.y = xyz.y;
-            particleArray[i].position.z = xyz.z + 3;
+            particleArray[i].position.x = 1.0f;
+            particleArray[i].position.y = 1.0f;
+            particleArray[i].position.z = 3.0f;
 
             particleArray[i].velocity.x =  Random.Range(-0.0001f, 0.0001f);
             particleArray[i].velocity.y =  Random.Range(-0.0001f, 0.0001f);
             particleArray[i].velocity.z = 0;
 
-            // Initial life value
-            particleArray[i].life = Random.value * 5.0f + 1.0f;
+            particleArray[i].heading = Random.Range(0, 2* Mathf.PI); // RADIANS
+            particleArray[i].speed = Random.Range(0.001f,0.05f);
         }
 
         float[] trailArray = new float[1024*1024];
@@ -192,7 +190,10 @@ public class SlimeCpu : MonoBehaviour
 
        //Debug.Log(MidiMaster.GetKnob(0, 14));
         decaySpeed = map(MidiMaster.GetKnob(2), 0.0f, 1.0f, 1.1f, 0.8f);
-        diffusionStrength = map(MidiMaster.GetKnob(1), 0.0f, 1.0f, 0.001f, 0.09f);
+        diffusionStrength = map(MidiMaster.GetKnob(1), 0.0f, 1.0f, -0.09f, 0.09f);
+        speedMultiplier = MidiMaster.GetKnob(3);
+        sensorAngle = map(MidiMaster.GetKnob(5), 0.0f, 1.0f, 0.0f, Mathf.PI);
+        sensorDistance = map(MidiMaster.GetKnob(6), 0.0f, 1.0f, 0.01f, 2.0f);
        
         float[] mousePosition2D = { cursorPos.x, cursorPos.y };
 
@@ -203,12 +204,16 @@ public class SlimeCpu : MonoBehaviour
         
         computeShader.SetFloat("decaySpeed", decaySpeed);
         computeShader.SetFloat("diffusionStrength", diffusionStrength);
+        computeShader.SetFloat("speedMultiplier", speedMultiplier);
+        computeShader.SetFloat("sensorAngle", sensorAngle);
+        computeShader.SetFloat("sensorDistance", sensorDistance);
         
-
-
         // Update the Particles
         computeShader.Dispatch(mComputeShaderParticleKernelID, mWarpCount, 1, 1);
         computeShader.Dispatch(mComputeShaderTrailKernelID, 32, 32, 1);
+
+        // UI
+        text.text = "Decay Speed: " + decaySpeed + "\nDiffussion Strength: " + diffusionStrength;
     }
 
     void OnGUI()
